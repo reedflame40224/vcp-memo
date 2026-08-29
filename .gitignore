@@ -1,0 +1,9 @@
+# 依赖与构建产物(本插件零依赖,防御性忽略)
+node_modules/
+# 运行期产物与日志
+backup.log
+*.tmp
+*.swp
+.DS_Store
+# 本地备份目录(bat 默认输出位)
+backup/

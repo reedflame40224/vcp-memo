@@ -1,0 +1,72 @@
+# vcp-memo bundle patch（规格 §9）：向 profile 组合插入插件行
+# name 用包名 vcp-memo；config 为默认配置，可在 profile 里以追加 patch 覆盖。
+- insert:
+    - id: vcp-memo
+      name: vcp-memo
+      config:
+        dataRoot: /home/lyy/vcp-memo-data
+        agentName: dsh
+        embedding:
+          baseUrl: http://127.0.0.1:11434/v1
+          model: bge-m3
+          dimension: 1024
+        memory:
+          kDefault: 6
+          truncate: 0.4
+        # P1.5:被动注入(SPEC-INJECT §1/§3),全部可选,缺省即用下列值;enabled: false 关闭
+        injection:
+          enabled: true
+          k: 4
+          truncate: 0.45
+          maxChars: 2000
+          timeoutMs: 1500
+          userWeight: 0.7
+          assistantWeight: 0.3
+        # P2:浪潮核心(SPEC-P2 §1 全表):共现图+传播核+查询融合,常数默认即生产值,
+        # 可按需在 profile 层以追加 patch 覆盖;enabled: false 关闭 wave 路径(回退 P1)。
+        tagmemo:
+          enabled: true
+          baseTagBoost: 0.15
+          cooccurrence:
+            forwardGain: 1.0
+            reverseGain: 0.35
+            minReverseGain: 0.25
+            maxReverseGain: 0.6
+            distanceDecay: 0.08
+            reverseInversionGuard: 0.9
+            semanticGainEnabled: true
+            semanticGainPeak: 0.65
+            semanticGainSigma: 0.25
+            semanticGainLowSimFallback: 0.1
+          kernel:
+            outboundMass: 0.95
+            associationReserveMass: 0.05
+            evidenceCompression: 1
+            wormholeGain: 1.35
+            tensionThreshold: 1
+            hubPenaltyExponent: 0.3
+            hubPenaltyFloor: 0.55
+            hubPenaltyCeiling: 1.8
+            hubSmoothingRatio: 0.1
+          spike:
+            maxSafeHops: 4
+            baseMomentum: 2
+            firingThreshold: 0.1
+            baseDecay: 0.25
+            wormholeDecay: 0.7
+            tensionThreshold: 1
+            maxEmergentNodes: 50
+            maxNeighborsPerNode: 20
+            returnFlowFactor: 0.15
+            firGamma: 0.6
+            maxPropagationStates: 2000
+          fusion:
+            dynamicBoostRange: [0.3, 2.0]
+            activationMultiplierRange: [0.5, 1.5]
+            coreBoostRange: [1.2, 1.4]
+            coreBoostFactor: 1.33
+            tagDedupThreshold: 0.88
+            techTagThreshold: 0.08
+            normalTagThreshold: 0.015
+          dedup:
+            semanticThreshold: 0.92

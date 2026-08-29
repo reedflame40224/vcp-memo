@@ -1,0 +1,13 @@
+{
+  "name": "vcp-memo",
+  "version": "0.1.0",
+  "description": "DSH 跨会话长期记忆插件：save_memory / recall_memory / memory_admin（Ollama bge-m3 + 暴力余弦 KNN + JSONL 索引 + 日记目录文件监听）",
+  "type": "module",
+  "main": "vcp-memo.mjs",
+  "license": "CC-BY-NC-SA-4.0",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
