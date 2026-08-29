@@ -17,7 +17,7 @@
         injection:
           enabled: true
           k: 4
-          truncate: 0.45
+          truncate: 0.55
           maxChars: 2000
           timeoutMs: 1500
           userWeight: 0.7

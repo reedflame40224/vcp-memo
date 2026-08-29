@@ -150,7 +150,7 @@ async function main() {
   // ── 1. 消息工厂形状 ──
   await test('消息工厂:UUID/role user/content text/source plugin recall/递归冻结', async () => {
     const store = makeFakeStore()
-    store.state.blocks = [{ file: 'f.md', chunkIndex: 0, score: 0.5, text: '记忆正文' }]
+    store.state.blocks = [{ file: 'f.md', chunkIndex: 0, score: 0.6, text: '记忆正文' }]
     const { injector } = makeInjector({ store, embedder: makeFakeEmbedder(2) })
     const { messages, decision } = baseTurn()
     const out = await runTurn(injector.handler, { agent: makeFakeAgent('s1'), messages, decision })
@@ -205,7 +205,7 @@ async function main() {
     assert.strictEqual(store.calls.length, 1)
     const call = store.calls[0]
     assert.strictEqual(call.k, 4)
-    assert.strictEqual(call.truncate, 0.45)
+    assert.strictEqual(call.truncate, 0.55)
     assert.ok(!('query' in call), '向量路径不应传 query')
     // 0.7/0.3 加权归一化手算:user→[1,0,0,0]、assistant→[0,1,0,0]
     const n = Math.sqrt(0.7 ** 2 + 0.3 ** 2)
@@ -215,7 +215,7 @@ async function main() {
 
     // -1 分支(§0):decision.messages 不含任何原消息 → 拼到末尾
     const store2b = makeFakeStore()
-    store2b.state.blocks = [{ file: 'f.md', chunkIndex: 0, score: 0.5, text: '正文' }]
+    store2b.state.blocks = [{ file: 'f.md', chunkIndex: 0, score: 0.6, text: '正文' }]
     const { injector: inj2 } = makeInjector({ store: store2b, embedder: makeFakeEmbedder(2) })
     const t2b = baseTurn('帮我查一下部署问题')
     const out2 = await runTurn(inj2.handler, {
@@ -241,7 +241,7 @@ async function main() {
   // ── 4. 节流 ──
   await test('节流:同 agent 相同 userText 第二次不注入;不同文本注入;每 agent 独立一份', async () => {
     const store = makeFakeStore()
-    store.state.blocks = [{ file: 'f.md', chunkIndex: 0, score: 0.5, text: '正文' }]
+    store.state.blocks = [{ file: 'f.md', chunkIndex: 0, score: 0.6, text: '正文' }]
     const embedder = makeFakeEmbedder(4)
     embedder.set('你好', [1, 0, 0, 0])
     embedder.set('下一个话题', [0, 1, 0, 0])
@@ -286,7 +286,7 @@ async function main() {
     embedder.set('上轮注入的记忆', [0, 0, 1, 0])
     embedder.set('工具结果', [0, 0, 0, 1])
     const store = makeFakeStore()
-    store.state.blocks = [{ file: 'f.md', chunkIndex: 0, score: 0.5, text: '正文' }]
+    store.state.blocks = [{ file: 'f.md', chunkIndex: 0, score: 0.6, text: '正文' }]
     const { injector } = makeInjector({ store, embedder })
     const oldRecall = { id: 'um', role: 'user', content: [{ type: 'text', text: '上轮注入的记忆' }], source: { kind: 'plugin', plugin: 'vcp-memo', form: 'recall' } }
     const oldTool = { id: 'ut', role: 'tool', content: [{ type: 'text', text: '工具结果' }], source: { kind: 'tool' } }
@@ -358,7 +358,7 @@ async function main() {
       { file: 'f2.md', chunkIndex: 0, score: 0.5, text: midBody },
       { file: 'f3.md', chunkIndex: 0, score: 0.1, text: lowBody },
     ]
-    const { injector } = makeInjector({ store, embedder: makeFakeEmbedder(2), config: { maxChars: 200 } })
+    const { injector } = makeInjector({ store, embedder: makeFakeEmbedder(2), config: { maxChars: 200, truncate: 0 } })
     const { messages, decision } = baseTurn('问')
     const out = await runTurn(injector.handler, { agent: makeFakeAgent('g7a'), messages, decision })
     const text = memoryMessageOf(out).content[0].text
@@ -369,7 +369,7 @@ async function main() {
     // (b) 最高分块本身超预算 → 保留其截断版(至少 100 字符)
     const store2 = makeFakeStore()
     store2.state.blocks = [{ file: 'f9.md', chunkIndex: 0, score: 0.9, text: 'x'.repeat(300) }]
-    const { injector: inj2 } = makeInjector({ store: store2, embedder: makeFakeEmbedder(2), config: { maxChars: 200 } })
+    const { injector: inj2 } = makeInjector({ store: store2, embedder: makeFakeEmbedder(2), config: { maxChars: 200, truncate: 0 } })
     const t2 = baseTurn('问')
     const out2 = await runTurn(inj2.handler, { agent: makeFakeAgent('g7b'), messages: t2.messages, decision: t2.decision })
     const text2 = memoryMessageOf(out2).content[0].text

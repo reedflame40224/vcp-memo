@@ -33,7 +33,7 @@ export function createInjector(deps)
 //   store,               // openStore 实例(用其 recall)
 //   embedder,            // createEmbedder 实例(构造查询向量)
 //   config: {            // 来自插件 config.injection,全部可选,括号为默认
-//     enabled?=true, k?=4, truncate?=0.45, maxChars?=2000, timeoutMs?=1500,
+//     enabled?=true, k?=4, truncate?=0.55, maxChars?=2000, timeoutMs?=1500,
 //     userWeight?=0.7, assistantWeight?=0.3,
 //   },
 //   log, fault: () => (string|null),   // 拒绝服务态读取器;返回非 null 时全部跳过
@@ -123,3 +123,10 @@ fake embedder(返回确定性向量)、fake agent(session.events 数组可控)�
 - 不做"最近 N 天日记全文附带"(廉价 OneRing,后续里程碑);
 - 不做 per-agent/per-preset 的注入过滤(后续需要时加 config);
 - 不修改 P1 诊断字段语义;排序仍由 recall 内部决定。
+
+## 修订(2026-08-29,活体反馈)
+
+1. 注入默认 `truncate` 0.45 → **0.55**:bge-m3 对不相关中文的基线余弦为 0.3–0.5,0.45 坐在
+   噪声带中间(实测:新会话输入 "test" 注入了 0.47–0.49 的弱相关块)。0.55 抬到噪声带之上。
+2. 注入侧对 recall 结果**重新执行 truncate 过滤**:wave 路径的 viaStructure 结构补充块豁免
+   truncate 的语义只适用于主动 recall;被动注入宁缺毋滥,低于阈值的块一律不进 <memory>。

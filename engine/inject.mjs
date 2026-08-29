@@ -166,7 +166,7 @@ function agentKey(agent) {
  *   store,               // openStore 实例(用其 recall)
  *   embedder,            // createEmbedder 实例(构造查询向量)
  *   config: {            // 来自插件 config.injection,全部可选,括号为默认(§1)
- *     enabled?=true, k?=4, truncate?=0.45, maxChars?=2000, timeoutMs?=1500,
+ *     enabled?=true, k?=4, truncate?=0.55, maxChars?=2000, timeoutMs?=1500,
  *     userWeight?=0.7, assistantWeight?=0.3,
  *   },
  *   log, fault: () => (string|null),  // 拒绝服务态读取器;非 null 时全部跳过
@@ -181,7 +181,7 @@ export function createInjector(deps) {
   const cfg = {
     enabled: d.config ? d.config.enabled !== false : true,
     k: Math.max(1, Math.floor(num(d.config && d.config.k, 4))),
-    truncate: Math.min(1, Math.max(0, num(d.config && d.config.truncate, 0.45))),
+    truncate: Math.min(1, Math.max(0, num(d.config && d.config.truncate, 0.55))),
     maxChars: Math.max(1, Math.floor(num(d.config && d.config.maxChars, 2000))),
     timeoutMs: Math.max(0, num(d.config && d.config.timeoutMs, 1500)),
     userWeight: num(d.config && d.config.userWeight, 0.7),
@@ -238,14 +238,19 @@ export function createInjector(deps) {
         return decision
       }
       const out = await recallWithTimeout(d.store.recall({ vector: q, k: cfg.k, truncate: cfg.truncate }), cfg.timeoutMs)
-      if (!out || !Array.isArray(out.blocks) || out.blocks.length === 0) {
+      // 注入侧再过滤:wave 路径的 viaStructure 结构补充块豁免 truncate(对主动 recall
+      // 合理——那是结构证据;对被动注入太吵——基线噪声带内的块不该进上下文)。
+      // 被动注入的哲学是"宁缺毋滥":只让 ≥ truncate 的块进入 <memory>。
+      const blocks = (out && Array.isArray(out.blocks) ? out.blocks : [])
+        .filter((b) => typeof b.score === 'number' && b.score >= cfg.truncate)
+      if (blocks.length === 0) {
         log('debug', `vcp-memo recall 无可用记忆块(${cfg.k}/${cfg.truncate}),跳过本轮注入`)
         lastSeedByAgent.set(seedOwner, seedKey)
         return decision
       }
 
       // 6. 渲染 <memory> 区块、构造消息、按 §0 拼入(§1.1 第 6 步)
-      const memText = renderMemoryBlock(out.blocks, cfg.maxChars)
+      const memText = renderMemoryBlock(blocks, cfg.maxChars)
       const memMsg = makeRecallMessage(memText)
       const newMessages = spliceDecisionMessages(decision, messages, memMsg)
       lastSeedByAgent.set(seedOwner, seedKey)
