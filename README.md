@@ -1,9 +1,148 @@
 # vcp-memo
 
-DSH（DeepSeek Harness，Cordis 插件体系）的跨会话长期记忆插件（P0）。
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/license-CC--BY--NC--SA--4.0-blue.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+[![Dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](./package.json)
+[![Test suites: 19 green](https://img.shields.io/badge/test%20suites-19%20green-brightgreen.svg)](#testing)
+[![Node.js ≥ 20](https://img.shields.io/badge/node-%E2%89%A5%2020-brightgreen.svg)](https://nodejs.org/)
+
+**Cross-session long-term memory for LLM agents — a faithful port of the production-proven
+TagMemo V9.1 "wave" algorithm from [VCPToolBox](https://github.com/lioensky/VCPToolBox)
+to [DeepSeek Harness](https://github.com/deepseek-ai) (DSH), as a zero-dependency Cordis plugin.**
+
+> 🇨🇳 完整中文文档见下方 [中文文档](#中文文档)。TL;DR：为 DSH 智能体提供跨会话长期记忆——
+> 写入即 Markdown 日记，检索走向量 + Tag 共现图"浪潮"传播，每轮对话前被动注入 `<memory>` 区块。
+
+---
+
+## Why not just vector RAG?
+
+Vector similarity finds text that *talks about the same thing*. Memory needs more than that:
+it needs **structural recall** — what else happened around the same project, what follows from what,
+which experience connects to this one through the agent's own narrative.
+
+vcp-memo keeps an **ordered tag co-occurrence graph** over the agent's diary corpus
+(tags are written by the agent, order-preserved — order *is* narrative direction),
+and on every query propagates a **bounded wave** from residual-pyramid-sensed seed tags:
+log-compressed evidence → hub-penalty correction → fixed per-node outflow budget →
+soft non-backtracking, momentum-limited hops → a γ-FIR energy field → dynamic query fusion
+`q' = (1−α)q + α·c`, where α is driven by EPA semantic-axis analysis
+(K-Means + weighted SVD: logic depth, entropy, cross-domain resonance).
+
+The result: memories linked by structure surface even when their wording is semantically
+distant from the query — the thing plain KNN cannot do.
+
+## A/B benchmark (real, reproducible)
+
+From [`tests/e2e-p2.test.mjs`](./tests/e2e-p2.test.mjs), a fixed A/B harness over a real
+local embedding model (bge-m3). The corpus contains a coined term ("泽塔波") in diary **A**
+(tagged `泽塔波, 澜沧计划`) and a semantically distant diary **B** about the linked project
+(tagged `澜沧计划, 部署`). Query: *"泽塔波的原理与影响"*.
+
+| | pure KNN | vcp-memo wave path |
+|---|---|---|
+| Diary A (direct semantic hit) | rank 1 · score 0.643 | rank 1 · score 0.653 |
+| Diary B (structurally linked, semantically distant) | **absent** (score 0.233 < truncate) | **recalled** via structure 泽塔波→澜沧计划→B, marked `viaStructure` |
+
+Run it yourself: `node tests/e2e-p2.test.mjs` (no framework, plain Node).
+
+Every recall also returns VCP-style diagnostics for inspection —
+`=Tag:0.74@seed` / `~Tag:0.26@emergent:1` notations plus a full `stats.wave`
+block (α, logicDepth, resonance, coverage, activation, seeds, fieldNodes, graphGeneration).
+
+## Features
+
+- **Passive injection** — memories are recalled and injected as a `<memory>` block into the
+  model's context *before* it forms an answer (an `agent/pre-step` hook), with per-agent
+  throttling, timeouts, and a fail-safe "never break the turn" policy. Recall before awareness.
+- **Agent tools** — `save_memory` / `recall_memory` / `update_memory` (anchor-replace edits) /
+  `memory_admin` (stats, rebuild), plus a system-prompt discipline section that teaches the
+  agent how to use them.
+- **Files as truth** — diaries are plain human-editable Markdown
+  (`diaries/<agent>/<date>-<time>-<title>.md`, VCP DailyNote contract). A file watcher
+  re-indexes external edits in seconds; the whole `index/` is a rebuildable derived artifact.
+- **TagMemo V9.1 wave core** — ordered co-occurrence matrix (positional potential × distance
+  decay × forward/reverse flow × bell-shaped semantic gain), bounded propagation kernel,
+  soft non-backtracking FIR propagation, tag semantic dedup, candidate dedup, structural
+  supplement fetch ("only add, never penalize").
+- **Management CLI** — `node bin/vcp-memo.mjs stats|rebuild|tags|doctor` runs standalone,
+  no DSH required.
+- **Zero npm dependencies** — plain ESM, Node built-ins + global `fetch` only.
+  Embedding via any OpenAI-compatible `/v1/embeddings` endpoint (local Ollama bge-m3 by default;
+  chat and embedding providers are deliberately decoupled).
+
+## How it works
+
+```
+save_memory ──► diaries/<agent>/*.md (truth source, git-friendly, human-editable)
+                     │  file watcher (human edits included)
+                     ▼
+        chunk → embed (Ollama bge-m3) → index/ (JSONL, rebuildable)
+                     │  tags with positions → vectors → EPA basis + co-occurrence graph
+                     ▼
+recall:  query vector
+        → EPA project (logicDepth / entropy / resonance)
+        → residual pyramid (seed tags, coverage / novelty / activation)
+        → V9.1 bounded wave propagation (energy field, core/seed/emergent provenance)
+        → dynamic fusion q' = (1−α)q + α·c
+        → KNN ∪ structural supplement → dedup → truncate → Top-K
+passive injection: agent/pre-step → recall(last user 0.7 + last assistant 0.3)
+        → <memory> block into the request, before the model answers
+```
+
+## Requirements & quickstart
+
+- Node.js ≥ 20; a local [Ollama](https://ollama.com/) with `bge-m3` (`ollama pull bge-m3`),
+  or any OpenAI-compatible embedding endpoint (`embedding.baseUrl` / `apiKey`).
+- Install as a DSH bundle: link this package into your profile and add it to
+  `dsh.profile.bundles`; the shipped [`cordis.patch.yml`](./cordis.patch.yml) self-registers
+  the plugin row. (中文安装/配置细节见下方文档。)
+- Verify: in a DSH session, ask the agent to `save_memory` something, open a new session,
+  and `recall_memory` it back.
+
+## Repository layout
+
+```
+vcp-memo.mjs        plugin entry (4 tools, pre-step injection, prompt section)
+core/               ported from VCPToolBox (CC BY-NC-SA, see NOTICE.md):
+                    TextChunker · EPAModule · ResidualPyramid · ResultDeduplicator
+engine/             original glue: embed · store · taglayer · inject · taggraph ·
+                    propagate · wave
+bin/vcp-memo.mjs    management CLI
+scripts/            Windows-side backup script (robocopy over \\wsl$)
+tests/              19 framework-free suites (node tests/<name>.test.mjs)
+SPEC*.md            design specs per milestone (P0 / P1 / inject / P2 / P3)
+```
+
+## Testing
+
+19 suites, zero framework, plain `node tests/<name>.test.mjs` — including
+**port-equivalence suites that load the original VCPToolBox modules and assert numerical
+parity** with the ported math, and end-to-end suites against a real embedding model
+(pure KNN vs wave A/B, passive-injection behavior, sig-mismatch refusal, watcher re-indexing).
+
+```bash
+for t in tests/*.test.mjs; do node "$t" || break; done
+```
+
+## License & attribution
+
+[CC BY-NC-SA 4.0](./LICENSE) — non-commercial use, share-alike.
+The algorithmic core in `core/` is ported from
+[lioensky/VCPToolBox](https://github.com/lioensky/VCPToolBox); full attribution and the
+ported-file list are in [NOTICE.md](./NOTICE.md). `engine/`, `bin/`, and the plugin entry
+are original work.
+
+---
+
+# 中文文档
+
+DSH（DeepSeek Harness，Cordis 插件体系）的跨会话长期记忆插件。
+
+## 工具
 
 - **`save_memory`**：把值得长期记住的经历/结论/决定/偏好写入跨会话长期记忆。即时可写，后台进入向量索引。
-- **`recall_memory`**：按语义检索历史日记片段（Ollama bge-m3 embedding + 暴力余弦 KNN + 相似度下限过滤）。
+- **`recall_memory`**：按语义检索历史日记片段（bge-m3 embedding + TagMemo V9.1 浪潮增强召回，返回 VCP 式诊断字段）。
+- **`update_memory`**：锚点式修正已有记忆（target ≥15 字符原文片段，replace 替换；命中多篇或不命中会报错）。
 - **`memory_admin`**：`stats` 查看统计；`rebuild` 全量重建索引（更换 embedding 模型后必须执行）。
 
 底层遵循 VCP DailyNote 日记格式：一笔记一文件（`diaries/<agent>/<YYYY-MM-DD>-<HH_MM_SS>[-标题].md`），
@@ -39,7 +178,7 @@ Markdown 文件永远是真相源，`index/` 只是可随时全量重建的派�
    DSH 的 profile composer 会按序解析每个 bundle 包，并读取其 `dsh.bundle.patch` 指向的补丁文件。
 3. **本插件的 `cordis.patch.yml` 被自动应用**：`package.json` 中
    `"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }` 声明了补丁位置；补丁内容为
-   `insert` 一行 `id: vcp-memo` 的插件行（含默认配置）。启动 profile 后插件即注册三个工具。
+   `insert` 一行 `id: vcp-memo` 的插件行（含默认配置）。启动 profile 后插件即注册四个工具。
 
 如需覆盖默认配置（如更换 embedding 模型/数据目录），在 profile 的 `cordis.patch.yml`（用户层）里
 追加对 `vcp-memo` 行的 `config` 覆盖，或直接改本插件的 patch 后重启。
@@ -63,6 +202,14 @@ Markdown 文件永远是真相源，`index/` 只是可随时全量重建的派�
 | `memory.truncate` | `0.4` | `recall_memory` 默认相似度下限 |
 | `chunker.maxTokens` | `6800` | 切分块 token 上限 |
 | `chunker.overlapTokens` | `680` | 块间重叠 token 数 |
+| `injection.enabled` | `true` | 被动注入开关（agent/pre-step） |
+| `injection.k` | `4` | 注入最多块数 |
+| `injection.truncate` | `0.55` | 注入相似度下限（须高于 bge-m3 噪声带 0.3–0.5） |
+| `injection.maxChars` | `2000` | 注入区块字符预算 |
+| `injection.timeoutMs` | `1500` | 注入召回限时（超时跳过，绝不阻塞对话轮） |
+| `tagmemo.enabled` | `true` | TagMemo V9.1 浪潮增强召回开关 |
+| `tagmemo.baseTagBoost` | `0.15` | 查询融合基准权重（VCP 生产默认） |
+| `tagmemo.maxSupplement` | `2` | 结构补充块补位上限（viaStructure 标记） |
 
 > 更换 `embedding.model`/`dimension` 后索引签名（`model@dimension`）会与旧索引不一致，
 > 插件将拒绝服务并提示执行 `memory_admin rebuild`。**切勿手动混用旧索引。**
@@ -74,7 +221,9 @@ Markdown 文件永远是真相源，`index/` 只是可随时全量重建的派�
 ├── diaries/<agent>/<YYYY-MM-DD>-<HH_MM_SS>[-标题].md   # 日记真相源（一笔记一文件）
 └── index/
     ├── chunks.jsonl   # 每行一个 chunk（含向量；派生产物）
-    └── meta.json      # 签名/维度/计数等一致性信息（派生产物）
+    ├── tags.jsonl     # Tag 层：标签、向量、出现位置
+    ├── epa.json       # EPA 基底缓存
+    └── meta.json      # 签名/维度/计数等一致性信息
 ```
 
 ## 备份建议
@@ -185,7 +334,7 @@ git init && git add diaries && git commit -m "backup: $(date)"
 ### 常见问题(FAQ)
 
 - **召回有噪声 / 结果太泛**:调高相似度下限 `memory.truncate`(默认 0.4,如调到 0.5);
-  被动注入噪声则调 `injection.truncate`(默认 0.45,可上调)或调小 `injection.k`。无需重建索引。
+  被动注入噪声则调 `injection.truncate`(默认 0.55,可上调)或调小 `injection.k`。无需重建索引。
 - **DSH 运行中用 CLI rebuild 后,插件行为没变**:CLI 只改磁盘索引,DSH 内存索引不自动刷新;
   重启 DSH,或改用 `memory_admin` 工具的 `rebuild`。
 - **恢复后直接启动,`index/` 空/缺失**:符合预期,启动时自动全量重建(embedding 服务需在线);
@@ -196,4 +345,4 @@ git init && git add diaries && git commit -m "backup: $(date)"
 ## 许可证
 
 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) — 非商业使用、演绎同许可。
-`core/chunker.mjs` 的算法移植自 lioensky/VCPToolBox（署名见 [NOTICE.md](./NOTICE.md)）。
+`core/` 四个文件的算法移植自 lioensky/VCPToolBox（署名与移植清单见 [NOTICE.md](./NOTICE.md)）。
